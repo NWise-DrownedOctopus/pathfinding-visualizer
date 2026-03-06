@@ -23,10 +23,11 @@ FPS = 60
 
 class Game:
         def __init__(self):
-            # here is where we initialize the game, before our while loop, this code only runs once
             pygame.init()
             pygame.display.set_caption("Intro To AI - Project 1 - Nicholas Wise")            
             pygame.mouse.set_visible(True)
+
+            self.clock = pygame.time.Clock()
 
             # Grid stuff
             self.grid_x_count = 40
@@ -34,27 +35,34 @@ class Game:
             self.grid_cell_size = 16
             self.random_seed = 3
             self.grid_reset = False
-            self.grid_obstacle_sparcity = 0.25
+            self.grid_obstacle_sparsity = 0.25
             self.grid_cell_count = self.grid_x_count * self.grid_y_count
 
             # UI Stuff
-            self.control_panel_diminsions = (160, 640)            
-            self.grid_window_diminsions = (self.grid_cell_size * self.grid_x_count, self.grid_cell_size * self.grid_y_count)
-            self.grid_window_pos = [203, 40, 203 + self.grid_window_diminsions[0], 10 + self.grid_window_diminsions[1]]
-            self.tree_window_diminsions = (400, 640)            
-            self.stats_panel_diminsions = (1240, 100)
-            self.screen = pygame.display.set_mode((1280, 800))
-            self.grid_window = pygame.Surface((self.grid_window_diminsions))
-            self.control_panel_window = pygame.Surface((self.control_panel_diminsions))
-            self.tree_window = pygame.Surface((self.tree_window_diminsions))
-            self.stats_panel = pygame.Surface((self.stats_panel_diminsions))
-
-            # Extra Stuff
-            self.text_font = pygame.font.Font("fonts/Oswald-Medium.ttf", 20)
-            self.clock = pygame.time.Clock()
             self.bg_color = (25, 25, 25)
+            self.text_font = pygame.font.Font("fonts/Oswald-Medium.ttf", 20)
+
+            self.screen = pygame.display.set_mode((1280, 800))
+
+            self.control_panel_dimensions = (160, 640)  
+            self.control_panel_window = pygame.Surface((self.control_panel_dimensions))     
+
+            self.grid_window_dimensions = (self.grid_cell_size * self.grid_x_count, self.grid_cell_size * self.grid_y_count)
+            self.grid_window_pos = [203, 40, 203 + self.grid_window_dimensions[0], 40 + self.grid_window_dimensions[1]]
+            self.grid_window = pygame.Surface((self.grid_window_dimensions))
+
+            self.tree_window_dimensions = (400, 640)  
+            self.tree_window = pygame.Surface((self.tree_window_dimensions))   
+
+            self.stats_panel_dimensions = (1240, 100)
+            self.stats_panel = pygame.Surface((self.stats_panel_dimensions))
+
+            # Selection Stuff
+            self.set_start_mode = False  
+            self.set_end_mode = False 
+            self.hover_display = False 
             
-            # Algorythm dropdown selection
+            # Algorithm dropdown selection
             dropdown = Dropdown(
                 self.screen, 40, 90, 120, 40, name='Select Algorithm',
                 choices=[
@@ -77,7 +85,7 @@ class Game:
             textbox = TextBox(self.screen, 40, 220, 130, 23, fontSize=15,
                   borderColour=(0, 0, 0), textColour=(0, 0, 0),
                   onSubmit=output, radius=2, borderThickness=1)
-            
+
             # Used to turn on start node selection
             self.set_start_node_button = Button(
                 self.screen,  # Surface to place button on
@@ -93,7 +101,7 @@ class Game:
                 hoverColour=(150, 0, 0),  # Colour of button when being hovered over
                 pressedColour=(0, 200, 20),  # Colour of button when being clicked
                 radius=3,  # Radius of border corners (leave empty for not curved)
-                onClick=lambda: print('Click')  # Function to call when clicked on
+                onClick=self.set_start_select_mode  # Function to call when clicked on
             )
 
             # Used to turn on end node selection
@@ -111,7 +119,7 @@ class Game:
                 hoverColour=(150, 0, 0),  # Colour of button when being hovered over
                 pressedColour=(0, 200, 20),  # Colour of button when being clicked
                 radius=3,  # Radius of border corners (leave empty for not curved)
-                onClick=lambda: print('Click')  # Function to call when clicked on
+                onClick=self.set_end_select_mode  # Function to call when clicked on
             )
 
         # returns cords of grid position relative to mouse position
@@ -130,13 +138,16 @@ class Game:
             grid_pos = [m_pos[0] - self.grid_window_pos[0], m_pos[1] - self.grid_window_pos[1]]
 
             cell_pos = [math.floor(grid_pos[0] / self.grid_cell_size), math.floor(grid_pos[1] / self.grid_cell_size)]
-            print("Mouse Pos: " + str(m_pos))
-            print("Grid Pos: " + str(grid_pos))
-            print("Cell Pos: " + str(cell_pos))
             return cell_pos
-            
-                
+        
+        def set_start_select_mode(self):
+            self.set_start_mode = True
+            self.set_end_mode = False
 
+        def set_end_select_mode(self):
+            self.set_end_mode = True
+            self.set_start_mode = False
+            
         def run(self):
             # Generate Grid
             grid = Grid(self.grid_cell_size, self.grid_x_count, self.grid_y_count)
@@ -146,7 +157,7 @@ class Game:
             control_panel = ControlPanel()
 
             # Generate Obstacles        
-            grid.generate_obstacles(0.25, self.random_seed)
+            grid.generate_obstacles(self.grid_obstacle_sparsity, self.random_seed)
 
             count = 0
             for cell in grid.grid:
@@ -173,6 +184,17 @@ class Game:
                         pygame.quit()
                         sys.exit()
 
+                    if event.type == pygame.MOUSEBUTTONUP:
+                        if self.set_start_mode and cell_pos is not None:
+                            cell = grid.get_cell(cell_pos[0], cell_pos[1])
+                            grid.set_start_node(cell)
+                            self.set_start_mode = False  
+             
+                        if self.set_end_mode and cell_pos is not None:
+                            cell = grid.get_cell(cell_pos[0], cell_pos[1])
+                            grid.set_end_node(cell)
+                            self.set_end_mode = False
+
                 # Reset Grid if needed
                 if self.grid_reset:
                     grid.reset_grid()
@@ -198,20 +220,20 @@ class Game:
                 pygame_widgets.update(events)
 
                 # Display grid pos
-                if cell_pos != None:
-                    hovered_cell = grid.get_cell(cell_pos[0], cell_pos[1])
-                    if hovered_cell != None:
-                        pygame.draw.rect(
-                            self.screen,
-                            RED,
-                            (
-                                (hovered_cell.x * self.grid_cell_size) + self.grid_window_pos[0],
-                                (hovered_cell.y * self.grid_cell_size) + self.grid_window_pos[1],
-                                self.grid_cell_size,
-                                self.grid_cell_size
+                if self.hover_display:
+                    if cell_pos != None:
+                        hovered_cell = grid.get_cell(cell_pos[0], cell_pos[1])
+                        if hovered_cell != None:
+                            pygame.draw.rect(
+                                self.screen,
+                                RED,
+                                (
+                                    (hovered_cell.x * self.grid_cell_size) + self.grid_window_pos[0],
+                                    (hovered_cell.y * self.grid_cell_size) + self.grid_window_pos[1],
+                                    self.grid_cell_size,
+                                    self.grid_cell_size
+                                )
                             )
-                        )
-                        # print("Bliting cell_hover at :" + str(hovered_cell.x * self.grid_cell_size) + ", " + str(hovered_cell.y * self.grid_cell_size))
 
                 pygame.display.update()
                 self.dt = self.clock.tick(FPS) / 1000

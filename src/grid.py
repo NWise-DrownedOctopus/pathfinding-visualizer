@@ -29,15 +29,16 @@ class Grid:
         self.x_count = x_count
         self.y_count = y_count
         self.grid = []
+        self.start_node = None
+        self.end_node = None
 
     def populate_grid(self):
         print("Populate Grid")
         count = 0
         for row in range(self.y_count):
             for col in range(self.x_count):
-                cell = Cell(row, col, CellState.NORMAL)
+                cell = Cell(col, row, CellState.NORMAL)
                 self.grid.append(cell)
-                print(str("Created cell at: " + str(row) + ", " + str(col)))
                 count += 1
         print("We created " + str(count) + " cells")
 
@@ -46,28 +47,40 @@ class Grid:
             cell.cell_type = CellState.NORMAL        
 
     def get_cell(self, x, y):
-        for cell in self.grid:
-            if cell.x == x:
-                if cell.y == y:
-                    return cell
+        index = y * self.x_count + x
+        return self.grid[index]
+                
+    def set_start_node(self, cell):
+        for c in self.grid:
+            if c.cell_type == CellState.START:
+                c.cell_type = CellState.NORMAL
+        cell.cell_type = CellState.START
+        self.start_node = cell
+
+    def set_end_node(self, cell):
+        for c in self.grid:
+            if c.cell_type == CellState.END:
+                c.cell_type = CellState.NORMAL
+        cell.cell_type = CellState.END
+        self.end_node = cell
                 
     def get_neighbors(self, cell):
         neighbors = []
         if cell.y > 0:
             north = (cell.x, cell.y - 1)
-            neighbors.append(self.get_cell(north))
+            neighbors.append(self.get_cell(north[0], north[1]))
         
         if cell.x < self.x_count - 1:
             east = (cell.x + 1, cell.y)
-            neighbors.append(self.get_cell(east))
+            neighbors.append(self.get_cell(east[0], east[1]))
         
         if cell.y < self.y_count - 1:
             south = (cell.x, cell.y + 1)
-            neighbors.append(self.get_cell(south))
+            neighbors.append(self.get_cell(south[0], south[1]))
 
         if cell.x > 0:
             west = (cell.x - 1, cell.y)
-            neighbors.append(self.get_cell(west))
+            neighbors.append(self.get_cell(west[0], west[1]))
 
         return neighbors
 
@@ -89,7 +102,7 @@ class Grid:
                 print("We have updated cell: " + str((cell.x, cell.y)) + "to contain blocked cells")
 
 
-    # Generate visuals for grid based on given grid diminsions
+    # Generate visuals for grid based on given grid dimensions
     def draw_grid(self, surface, x_count, y_count):
         for cell in self.grid:
             if cell.cell_type == CellState.BLOCKED:
@@ -98,8 +111,8 @@ class Grid:
                     surface,
                     LIGHT_GRAY,
                     (
-                        cell.y * self.tile_size,
                         cell.x * self.tile_size,
+                        cell.y * self.tile_size,
                         self.tile_size,
                         self.tile_size
                     )
@@ -109,8 +122,8 @@ class Grid:
                     surface,
                     DARK_GRAY,
                     (
-                        cell.y * self.tile_size,
                         cell.x * self.tile_size,
+                        cell.y * self.tile_size,
                         self.tile_size,
                         self.tile_size
                     )
@@ -120,8 +133,8 @@ class Grid:
                     surface,
                     BLUE,
                     (
-                        cell.y * self.tile_size,
                         cell.x * self.tile_size,
+                        cell.y * self.tile_size,
                         self.tile_size,
                         self.tile_size
                     )
@@ -129,10 +142,10 @@ class Grid:
             if cell.cell_type == CellState.END:
                 pygame.draw.rect(
                     surface,
-                    PURPLE
+                    PURPLE,
                     (
-                        cell.y * self.tile_size,
                         cell.x * self.tile_size,
+                        cell.y * self.tile_size,
                         self.tile_size,
                         self.tile_size
                     )
@@ -142,8 +155,8 @@ class Grid:
                     surface,
                     GREEN,
                     (
-                        cell.y * self.tile_size,
                         cell.x * self.tile_size,
+                        cell.y * self.tile_size,
                         self.tile_size,
                         self.tile_size
                     )
@@ -153,8 +166,8 @@ class Grid:
                     surface,
                     RED,
                     (
-                        cell.y * self.tile_size,
                         cell.x * self.tile_size,
+                        cell.y * self.tile_size,
                         self.tile_size,
                         self.tile_size
                     )
@@ -164,8 +177,8 @@ class Grid:
                     surface,
                     YELLOW,
                     (
-                        cell.y * self.tile_size,
                         cell.x * self.tile_size,
+                        cell.y * self.tile_size,
                         self.tile_size,
                         self.tile_size
                     )
