@@ -1,5 +1,5 @@
 import pygame, sys, pygame_widgets, math
-
+from enum import Enum, auto
 
 from utils import draw_text
 from grid import Grid
@@ -18,6 +18,11 @@ PURPLE = (136, 66, 207)
 GREEN = (90, 207, 66)
 RED = (209, 48, 48)
 YELLOW = (227, 197, 91)
+
+class algorithm_chosen(Enum):
+    BFS = auto()
+    DFS = auto()
+    NONE = auto()
 
 FPS = 60
 
@@ -61,17 +66,18 @@ class Game:
             self.set_start_mode = False  
             self.set_end_mode = False 
             self.hover_display = False 
+            self.algorithim = algorithm_chosen.NONE
             
             # Algorithm dropdown selection
-            dropdown = Dropdown(
+            self.dropdown = Dropdown(
                 self.screen, 40, 90, 120, 40, name='Select Algorithm',
                 choices=[
-                    'BFD',
+                    'BFS',
                     'DFS',
                 ],
                 borderRadius=1, colour=(LIGHT_GRAY), values=[1, 2],
                 direction='down', textHAlign='left',
-            )
+            )            
 
             # Set random seed based on textbox input
             # note: I should probobly add some type checking / protection here to avoid crashes
@@ -122,6 +128,24 @@ class Game:
                 onClick=self.set_end_select_mode  # Function to call when clicked on
             )
 
+            # Used to run algorithm
+            self.start_algo_button = Button(
+                self.screen,  # Surface to place button on
+                40,  # X-coordinate of top left corner
+                600,  # Y-coordinate of top left corner
+                130,  # Width
+                40,  # Height
+
+                text='Run Algorithm',  # Text to display
+                fontSize=15,  # Size of font
+                margin=10,  # Minimum distance between text/image and edge of button
+                inactiveColour=(255, 255, 255),  # Colour of button when not being interacted with
+                hoverColour=(150, 0, 0),  # Colour of button when being hovered over
+                pressedColour=(0, 200, 20),  # Colour of button when being clicked
+                radius=3,  # Radius of border corners (leave empty for not curved)
+                onClick=self.start_algorithm  # Function to call when clicked on
+            )
+
         # returns cords of grid position relative to mouse position
         def get_grid_pos(self):
             cell_pos = None
@@ -141,12 +165,23 @@ class Game:
             return cell_pos
         
         def set_start_select_mode(self):
+            self.hover_display = True
             self.set_start_mode = True
             self.set_end_mode = False
 
         def set_end_select_mode(self):
+            self.hover_display = True
             self.set_end_mode = True
             self.set_start_mode = False
+
+        def start_algorithm(self):
+            algo_choice_str = self.dropdown.getSelected()
+            if algo_choice_str == 'BFS':
+                self.algorithim = algorithm_chosen.BFS
+            elif algo_choice_str == 'DFS':
+                self.algorithim = algorithm_chosen.DFS
+            else:
+                return
             
         def run(self):
             # Generate Grid
@@ -188,12 +223,14 @@ class Game:
                         if self.set_start_mode and cell_pos is not None:
                             cell = grid.get_cell(cell_pos[0], cell_pos[1])
                             grid.set_start_node(cell)
-                            self.set_start_mode = False  
+                            self.set_start_mode = False
+                            self.hover_display = False
              
                         if self.set_end_mode and cell_pos is not None:
                             cell = grid.get_cell(cell_pos[0], cell_pos[1])
                             grid.set_end_node(cell)
                             self.set_end_mode = False
+                            self.hover_display = False
 
                 # Reset Grid if needed
                 if self.grid_reset:
