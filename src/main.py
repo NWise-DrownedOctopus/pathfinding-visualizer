@@ -4,6 +4,7 @@ from enum import Enum, auto
 from utils import draw_text
 from grid import Grid
 from control_panel import ControlPanel
+from algorithms import BFS, DFS
 
 from pygame_widgets.textbox import TextBox
 from pygame_widgets.dropdown import Dropdown
@@ -66,7 +67,13 @@ class Game:
             self.set_start_mode = False  
             self.set_end_mode = False 
             self.hover_display = False 
-            self.algorithim = algorithm_chosen.NONE
+            self.algorithim = algorithm_chosen.BFS
+            self.run_algo = False
+            self.pathfinding_started = False
+            
+            # Algo Stuff
+            self.bfs = None
+            self.dfs = None
             
             # Algorithm dropdown selection
             self.dropdown = Dropdown(
@@ -175,13 +182,18 @@ class Game:
             self.set_start_mode = False
 
         def start_algorithm(self):
-            algo_choice_str = self.dropdown.getSelected()
-            if algo_choice_str == 'BFS':
+            algo_choice = self.dropdown.getSelected()
+
+            if algo_choice == 1:
                 self.algorithim = algorithm_chosen.BFS
-            elif algo_choice_str == 'DFS':
+            elif algo_choice == 2:
                 self.algorithim = algorithm_chosen.DFS
             else:
+                print("Please select an algorithm")
                 return
+
+            self.run_algo = True
+            
             
         def run(self):
             # Generate Grid
@@ -235,11 +247,11 @@ class Game:
                 # Reset Grid if needed
                 if self.grid_reset:
                     grid.reset_grid()
-                    grid.generate_obstacles(0.25, self.random_seed)
+                    grid.generate_obstacles(self.grid_obstacle_sparsity, self.random_seed)
                     self.grid_reset = False
 
                 # Draw Grid
-                grid.draw_grid(self.grid_window, self.grid_y_count, self.grid_x_count)
+                grid.draw_grid(self.grid_window, self.grid_x_count, self.grid_y_count)
                 # Draw Control Panel
                 control_panel.draw_control_panel(self.control_panel_window, self.text_font)
 
@@ -248,6 +260,39 @@ class Game:
                 self.screen.blit(self.grid_window, (self.grid_window_pos[0], self.grid_window_pos[1]))                
                 self.screen.blit(self.tree_window, (860, 40))
                 self.screen.blit(self.stats_panel, (20, 700))
+                
+                # Render pathfinding on grid in realtime
+                # We need a few things before we can start
+                # 1. We need the user to have selected an algorithim
+                if self.algorithim != algorithm_chosen.NONE and self.run_algo:
+                    # 2. We need a start node
+                    if grid.start_node is not None:
+                        # 3. We need an end node
+                        if grid.end_node is not None:
+                            print("We are ready to go, lets run: " + str(self.algorithim))
+                            if self.algorithim == algorithm_chosen.BFS:
+                                if self.pathfinding_started == False:
+                                    self.bfs = BFS(grid)
+                                    print("WE created BFS algo")
+                                    self.pathfinding_started = True
+                                else:
+                                    t_f = self.bfs.update()
+                                    print("We updated bfs")
+                                    if t_f:
+                                        self.run_algo = False
+                                        self.pathfinding_started = False
+                            if self.algorithim == algorithm_chosen.DFS:
+                                if self.pathfinding_started == False:
+                                    self.dfs = DFS(grid)
+                                    print("WE created DFS algo")
+                                    self.pathfinding_started = True
+                                else:
+                                    t_f = self.dfs.update()
+                                    print("We updated bfs")
+                                    if t_f:
+                                        self.run_algo = False
+                                        self.pathfinding_started = False
+                            
 
                 # Generate UI Elements
                 draw_text(self.screen, "Algorithm Selection", self.text_font, (255, 255, 255), 23, 10)                

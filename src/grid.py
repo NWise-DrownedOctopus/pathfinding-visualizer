@@ -44,7 +44,9 @@ class Grid:
 
     def reset_grid(self):
         for cell in self.grid:
-            cell.cell_type = CellState.NORMAL        
+            cell.cell_type = CellState.NORMAL
+        self.start_node = None
+        self.end_node = None
 
     def get_cell(self, x, y):
         index = y * self.x_count + x
