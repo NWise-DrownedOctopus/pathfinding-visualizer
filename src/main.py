@@ -5,6 +5,7 @@ from utils import draw_text
 from grid import Grid
 from control_panel import ControlPanel
 from algorithms import BFS, DFS
+from tree import TreeVisualizer, TreeNode
 
 from pygame_widgets.textbox import TextBox
 from pygame_widgets.dropdown import Dropdown
@@ -58,7 +59,8 @@ class Game:
             self.grid_window = pygame.Surface((self.grid_window_dimensions))
 
             self.tree_window_dimensions = (400, 640)  
-            self.tree_window = pygame.Surface((self.tree_window_dimensions))   
+            self.tree_window = pygame.Surface((self.tree_window_dimensions))  
+            self.tree_viz = TreeVisualizer(self.tree_window, self.tree_window_dimensions[0], self.tree_window_dimensions[1]) 
 
             self.stats_panel_dimensions = (1240, 100)
             self.stats_panel = pygame.Surface((self.stats_panel_dimensions))
@@ -248,12 +250,18 @@ class Game:
                 if self.grid_reset:
                     grid.reset_grid()
                     grid.generate_obstacles(self.grid_obstacle_sparsity, self.random_seed)
+                    self.tree_viz.reset(grid.start_node)
+                    self.run_algo = False
+                    self.pathfinding_started = False
                     self.grid_reset = False
 
                 # Draw Grid
                 grid.draw_grid(self.grid_window, self.grid_x_count, self.grid_y_count)
                 # Draw Control Panel
                 control_panel.draw_control_panel(self.control_panel_window, self.text_font)
+                
+                # Draw Tree
+                self.tree_viz.draw()
 
                 # Apply game_window onto our display
                 self.screen.blit(self.control_panel_window, (20, 40))
@@ -272,7 +280,8 @@ class Game:
                             print("We are ready to go, lets run: " + str(self.algorithim))
                             if self.algorithim == algorithm_chosen.BFS:
                                 if self.pathfinding_started == False:
-                                    self.bfs = BFS(grid)
+                                    self.bfs = BFS(grid, self.tree_viz)
+                                    self.tree_viz.reset(grid.start_node)
                                     print("WE created BFS algo")
                                     self.pathfinding_started = True
                                 else:
@@ -283,12 +292,13 @@ class Game:
                                         self.pathfinding_started = False
                             if self.algorithim == algorithm_chosen.DFS:
                                 if self.pathfinding_started == False:
-                                    self.dfs = DFS(grid)
+                                    self.dfs = DFS(grid, self.tree_viz)
+                                    self.tree_viz.reset(grid.start_node)
                                     print("WE created DFS algo")
                                     self.pathfinding_started = True
                                 else:
                                     t_f = self.dfs.update()
-                                    print("We updated bfs")
+                                    print("We updated dfs")
                                     if t_f:
                                         self.run_algo = False
                                         self.pathfinding_started = False
