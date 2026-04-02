@@ -21,15 +21,13 @@ GREEN = (90, 207, 66)
 RED = (209, 48, 48)
 YELLOW = (227, 197, 91)
 
+FPS = 60
+
 
 class algorithm_chosen(Enum):
     BFS = auto()
     DFS = auto()
     NONE = auto()
-
-
-FPS = 60
-
 
 class Game:
     def __init__(self):
@@ -90,8 +88,8 @@ class Game:
 
         # Set random seed based on textbox input
         def output():
-            print(textbox.getText())
-            self.random_seed = int(textbox.getText())
+            print(self.textbox.getText())
+            self.random_seed = int(self.textbox.getText())
             self.grid_reset = True
 
         self.textbox = TextBox(self.screen, 40, 220, 130, 23, fontSize=15,

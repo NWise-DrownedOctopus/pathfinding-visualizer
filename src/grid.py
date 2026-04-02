@@ -22,6 +22,10 @@ class CellState(Enum):
     PATH = auto()
 
 
+# ---------------------------------------------------------------------------
+# Grid data structures
+# ---------------------------------------------------------------------------
+
 class Grid:
 
     def __init__(self, tile_size, x_count, y_count):
