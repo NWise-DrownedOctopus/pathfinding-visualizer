@@ -4,7 +4,7 @@ from enum import Enum, auto
 from utils import draw_text
 from grid import Grid
 from control_panel import ControlPanel
-from algorithms import BFS, DFS
+from grid_algorithms import BFS, DFS
 from tree import TreeVisualizer, TreeNode
 
 from pygame_widgets.textbox import TextBox
