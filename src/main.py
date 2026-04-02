@@ -1,15 +1,5 @@
-import pygame, sys, pygame_widgets, math
-from enum import Enum, auto
-
-from utils import draw_text
-from grid import Grid
-from control_panel import ControlPanel
-from algorithms import BFS, DFS
-from tree import TreeVisualizer, TreeNode
-
-from pygame_widgets.textbox import TextBox
-from pygame_widgets.dropdown import Dropdown
-from pygame_widgets.button import Button
+import pygame, sys
+import pygame_widgets
 
 WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
@@ -21,313 +11,114 @@ GREEN = (90, 207, 66)
 RED = (209, 48, 48)
 YELLOW = (227, 197, 91)
 
-class algorithm_chosen(Enum):
-    BFS = auto()
-    DFS = auto()
-    NONE = auto()
-
 FPS = 60
 
-class Game:
-        def __init__(self):
-            pygame.init()
-            pygame.display.set_caption("Intro To AI - Project 1 - Nicholas Wise")            
-            pygame.mouse.set_visible(True)
 
-            self.clock = pygame.time.Clock()
+def draw_text(surface, text, font, color, x, y):
+    text_surface = font.render(text, True, color)
+    surface.blit(text_surface, (x, y))
 
-            # Grid stuff
-            self.grid_x_count = 40
-            self.grid_y_count = 40
-            self.grid_cell_size = 16
-            self.random_seed = 3
-            self.grid_reset = False
-            self.grid_obstacle_sparsity = 0.25
-            self.grid_cell_count = self.grid_x_count * self.grid_y_count
 
-            # UI Stuff
-            self.bg_color = (25, 25, 25)
-            self.text_font = pygame.font.Font("fonts/Oswald-Medium.ttf", 20)
+class TitleScreen:
+    def __init__(self):
+        pygame.init()
+        pygame.display.set_caption("Intro To AI - Nicholas Wise")
+        pygame.mouse.set_visible(True)
 
-            self.screen = pygame.display.set_mode((1280, 800))
+        self.clock = pygame.time.Clock()
+        self.screen = pygame.display.set_mode((1280, 800))
+        self.bg_color = (25, 25, 25)
 
-            self.control_panel_dimensions = (160, 640)  
-            self.control_panel_window = pygame.Surface((self.control_panel_dimensions))     
+        self.title_font  = pygame.font.Font("fonts/Oswald-Medium.ttf", 52)
+        self.sub_font    = pygame.font.Font("fonts/Oswald-Medium.ttf", 24)
+        self.button_font = pygame.font.Font("fonts/Oswald-Medium.ttf", 20)
 
-            self.grid_window_dimensions = (self.grid_cell_size * self.grid_x_count, self.grid_cell_size * self.grid_y_count)
-            self.grid_window_pos = [203, 40, 203 + self.grid_window_dimensions[0], 40 + self.grid_window_dimensions[1]]
-            self.grid_window = pygame.Surface((self.grid_window_dimensions))
+        # Button rects
+        btn_w, btn_h = 380, 80
+        cx = self.screen.get_width() // 2
+        self.btn_search = pygame.Rect(cx - btn_w // 2, 340, btn_w, btn_h)
+        self.btn_guided = pygame.Rect(cx - btn_w // 2, 460, btn_w, btn_h)
+        self.btn_quit   = pygame.Rect(cx - btn_w // 2, 580, btn_w, btn_h)
 
-            self.tree_window_dimensions = (400, 640)  
-            self.tree_window = pygame.Surface((self.tree_window_dimensions))  
-            self.tree_viz = TreeVisualizer(self.tree_window, self.tree_window_dimensions[0], self.tree_window_dimensions[1]) 
+        self.hovered = None  # tracks which button is hovered
 
-            self.stats_panel_dimensions = (1240, 100)
-            self.stats_panel = pygame.Surface((self.stats_panel_dimensions))
+    def draw_button(self, rect, label, hovered):
+        base_color   = (60, 60, 60)
+        hover_color  = (90, 90, 130)
+        border_color = BLUE if hovered else LIGHT_GRAY
 
-            # Selection Stuff
-            self.set_start_mode = False  
-            self.set_end_mode = False 
-            self.hover_display = False 
-            self.algorithim = algorithm_chosen.BFS
-            self.run_algo = False
-            self.pathfinding_started = False
-            
-            # Algo Stuff
-            self.bfs = None
-            self.dfs = None
-            
-            # Algorithm dropdown selection
-            self.dropdown = Dropdown(
-                self.screen, 40, 90, 120, 40, name='Select Algorithm',
-                choices=[
-                    'BFS',
-                    'DFS',
-                ],
-                borderRadius=1, colour=(LIGHT_GRAY), values=[1, 2],
-                direction='down', textHAlign='left',
-            )            
+        pygame.draw.rect(self.screen, hover_color if hovered else base_color, rect, border_radius=6)
+        pygame.draw.rect(self.screen, border_color, rect, width=2, border_radius=6)
 
-            # Set random seed based on textbox input
-            # note: I should probobly add some type checking / protection here to avoid crashes
-            def output():
-                # Get text in the textbox
-                print(textbox.getText())
-                self.random_seed = int(textbox.getText())
-                self.grid_reset = True
+        text_surf = self.button_font.render(label, True, WHITE)
+        text_rect = text_surf.get_rect(center=rect.center)
+        self.screen.blit(text_surf, text_rect)
 
-            # Text boxed used to grab random seed input
-            textbox = TextBox(self.screen, 40, 220, 130, 23, fontSize=15,
-                  borderColour=(0, 0, 0), textColour=(0, 0, 0),
-                  onSubmit=output, radius=2, borderThickness=1)
+    def run(self):
+        while True:
+            self.screen.fill(self.bg_color)
 
-            # Used to turn on start node selection
-            self.set_start_node_button = Button(
-                self.screen,  # Surface to place button on
-                40,  # X-coordinate of top left corner
-                350,  # Y-coordinate of top left corner
-                130,  # Width
-                40,  # Height
+            events = pygame.event.get()
+            for event in events:
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    sys.exit()
 
-                text='Set Start Node',  # Text to display
-                fontSize=15,  # Size of font
-                margin=10,  # Minimum distance between text/image and edge of button
-                inactiveColour=(255, 255, 255),  # Colour of button when not being interacted with
-                hoverColour=(150, 0, 0),  # Colour of button when being hovered over
-                pressedColour=(0, 200, 20),  # Colour of button when being clicked
-                radius=3,  # Radius of border corners (leave empty for not curved)
-                onClick=self.set_start_select_mode  # Function to call when clicked on
-            )
-
-            # Used to turn on end node selection
-            self.set_end_node_button = Button(
-                self.screen,  # Surface to place button on
-                40,  # X-coordinate of top left corner
-                450,  # Y-coordinate of top left corner
-                130,  # Width
-                40,  # Height
-
-                text='Set End Node',  # Text to display
-                fontSize=15,  # Size of font
-                margin=10,  # Minimum distance between text/image and edge of button
-                inactiveColour=(255, 255, 255),  # Colour of button when not being interacted with
-                hoverColour=(150, 0, 0),  # Colour of button when being hovered over
-                pressedColour=(0, 200, 20),  # Colour of button when being clicked
-                radius=3,  # Radius of border corners (leave empty for not curved)
-                onClick=self.set_end_select_mode  # Function to call when clicked on
-            )
-
-            # Used to run algorithm
-            self.start_algo_button = Button(
-                self.screen,  # Surface to place button on
-                40,  # X-coordinate of top left corner
-                600,  # Y-coordinate of top left corner
-                130,  # Width
-                40,  # Height
-
-                text='Run Algorithm',  # Text to display
-                fontSize=15,  # Size of font
-                margin=10,  # Minimum distance between text/image and edge of button
-                inactiveColour=(255, 255, 255),  # Colour of button when not being interacted with
-                hoverColour=(150, 0, 0),  # Colour of button when being hovered over
-                pressedColour=(0, 200, 20),  # Colour of button when being clicked
-                radius=3,  # Radius of border corners (leave empty for not curved)
-                onClick=self.start_algorithm  # Function to call when clicked on
-            )
-
-        # returns cords of grid position relative to mouse position
-        def get_grid_pos(self):
-            cell_pos = None
-            m_pos = pygame.mouse.get_pos()
-            if m_pos[0] < self.grid_window_pos[0]:
-                return cell_pos
-            if m_pos[0] > self.grid_window_pos[2]:
-                return cell_pos
-            if m_pos[1] < self.grid_window_pos[1]:
-                return cell_pos
-            if m_pos[1] > self.grid_window_pos[3]:
-                return cell_pos
-            
-            grid_pos = [m_pos[0] - self.grid_window_pos[0], m_pos[1] - self.grid_window_pos[1]]
-
-            cell_pos = [math.floor(grid_pos[0] / self.grid_cell_size), math.floor(grid_pos[1] / self.grid_cell_size)]
-            return cell_pos
-        
-        def set_start_select_mode(self):
-            self.hover_display = True
-            self.set_start_mode = True
-            self.set_end_mode = False
-
-        def set_end_select_mode(self):
-            self.hover_display = True
-            self.set_end_mode = True
-            self.set_start_mode = False
-
-        def start_algorithm(self):
-            algo_choice = self.dropdown.getSelected()
-
-            if algo_choice == 1:
-                self.algorithim = algorithm_chosen.BFS
-            elif algo_choice == 2:
-                self.algorithim = algorithm_chosen.DFS
-            else:
-                print("Please select an algorithm")
-                return
-
-            self.run_algo = True
-            
-            
-        def run(self):
-            # Generate Grid
-            grid = Grid(self.grid_cell_size, self.grid_x_count, self.grid_y_count)
-            grid.populate_grid()
-
-            # Generate Control Panel
-            control_panel = ControlPanel()
-
-            # Generate Obstacles        
-            grid.generate_obstacles(self.grid_obstacle_sparsity, self.random_seed)
-
-            count = 0
-            for cell in grid.grid:
-                print("Cell " + str(count) + ": " + str(cell.cell_type))
-                count += 1
-
-            # Here we enter the game loop, it is called "every frame"
-            while True:
-                # Here is where we can draw our background
-                self.screen.fill(self.bg_color)
-                self.control_panel_window.fill(DARK_GRAY)
-                self.grid_window.fill(DARK_GRAY)
-                self.tree_window.fill(DARK_GRAY)
-                self.stats_panel.fill(DARK_GRAY)      
-
-                cell_pos = self.get_grid_pos()    
-
-                # Handle Events
-                events = pygame.event.get()
-
-                for event in events:
-                    # This is where we make sure the game breaks out of the loop when the player wishes to exit
-                    if event.type == pygame.QUIT:
+                if event.type == pygame.MOUSEBUTTONUP:
+                    if self.btn_search.collidepoint(event.pos):
+                        self.launch_search_methods()
+                    elif self.btn_guided.collidepoint(event.pos):
+                        self.launch_guided_search()
+                    elif self.btn_quit.collidepoint(event.pos):
                         pygame.quit()
                         sys.exit()
 
-                    if event.type == pygame.MOUSEBUTTONUP:
-                        if self.set_start_mode and cell_pos is not None:
-                            cell = grid.get_cell(cell_pos[0], cell_pos[1])
-                            grid.set_start_node(cell)
-                            self.set_start_mode = False
-                            self.hover_display = False
-             
-                        if self.set_end_mode and cell_pos is not None:
-                            cell = grid.get_cell(cell_pos[0], cell_pos[1])
-                            grid.set_end_node(cell)
-                            self.set_end_mode = False
-                            self.hover_display = False
+            mouse_pos = pygame.mouse.get_pos()
+            self.hovered = None
+            if self.btn_search.collidepoint(mouse_pos):
+                self.hovered = "search"
+            elif self.btn_guided.collidepoint(mouse_pos):
+                self.hovered = "guided"
+            elif self.btn_quit.collidepoint(mouse_pos):
+                self.hovered = "quit"
 
-                # Reset Grid if needed
-                if self.grid_reset:
-                    grid.reset_grid()
-                    grid.generate_obstacles(self.grid_obstacle_sparsity, self.random_seed)
-                    self.tree_viz.reset(grid.start_node)
-                    self.run_algo = False
-                    self.pathfinding_started = False
-                    self.grid_reset = False
+            # --- Title ---
+            title_surf = self.title_font.render("Intro To AI", True, WHITE)
+            self.screen.blit(title_surf, title_surf.get_rect(centerx=self.screen.get_width() // 2, y=120))
 
-                # Draw Grid
-                grid.draw_grid(self.grid_window, self.grid_x_count, self.grid_y_count)
-                # Draw Control Panel
-                control_panel.draw_control_panel(self.control_panel_window, self.text_font)
-                
-                # Draw Tree
-                self.tree_viz.draw()
+            sub_surf = self.sub_font.render("Select a project to begin", True, LIGHT_GRAY)
+            self.screen.blit(sub_surf, sub_surf.get_rect(centerx=self.screen.get_width() // 2, y=200))
 
-                # Apply game_window onto our display
-                self.screen.blit(self.control_panel_window, (20, 40))
-                self.screen.blit(self.grid_window, (self.grid_window_pos[0], self.grid_window_pos[1]))                
-                self.screen.blit(self.tree_window, (860, 40))
-                self.screen.blit(self.stats_panel, (20, 700))
-                
-                # Render pathfinding on grid in realtime
-                # We need a few things before we can start
-                # 1. We need the user to have selected an algorithim
-                if self.algorithim != algorithm_chosen.NONE and self.run_algo:
-                    # 2. We need a start node
-                    if grid.start_node is not None:
-                        # 3. We need an end node
-                        if grid.end_node is not None:
-                            print("We are ready to go, lets run: " + str(self.algorithim))
-                            if self.algorithim == algorithm_chosen.BFS:
-                                if self.pathfinding_started == False:
-                                    self.bfs = BFS(grid, self.tree_viz)
-                                    self.tree_viz.reset(grid.start_node)
-                                    print("WE created BFS algo")
-                                    self.pathfinding_started = True
-                                else:
-                                    t_f = self.bfs.update()
-                                    print("We updated bfs")
-                                    if t_f:
-                                        self.run_algo = False
-                                        self.pathfinding_started = False
-                            if self.algorithim == algorithm_chosen.DFS:
-                                if self.pathfinding_started == False:
-                                    self.dfs = DFS(grid, self.tree_viz)
-                                    self.tree_viz.reset(grid.start_node)
-                                    print("WE created DFS algo")
-                                    self.pathfinding_started = True
-                                else:
-                                    t_f = self.dfs.update()
-                                    print("We updated dfs")
-                                    if t_f:
-                                        self.run_algo = False
-                                        self.pathfinding_started = False
-                            
+            divider_y = 270
+            pygame.draw.line(self.screen, DARK_GRAY,
+                             (self.screen.get_width() // 2 - 300, divider_y),
+                             (self.screen.get_width() // 2 + 300, divider_y), 1)
 
-                # Generate UI Elements
-                draw_text(self.screen, "Algorithm Selection", self.text_font, (255, 255, 255), 23, 10)                
-                draw_text(self.screen, "Grid View", self.text_font, (255, 255, 255), self.grid_window_pos[0], self.grid_window_pos[1] - 30)
-                draw_text(self.screen, "Tree View", self.text_font, (255, 255, 255), 863, 10)
-                draw_text(self.screen, "Stats", self.text_font, (255, 255, 255), 23, 700)
-                pygame_widgets.update(events)
+            # --- Buttons ---
+            self.draw_button(self.btn_search, "Project 1 — Search Methods (BFS / DFS)", self.hovered == "search")
+            self.draw_button(self.btn_guided, "Project 2 — Guided Search",               self.hovered == "guided")
+            self.draw_button(self.btn_quit,   "Quit",                                     self.hovered == "quit")
 
-                # Display grid pos
-                if self.hover_display:
-                    if cell_pos != None:
-                        hovered_cell = grid.get_cell(cell_pos[0], cell_pos[1])
-                        if hovered_cell != None:
-                            pygame.draw.rect(
-                                self.screen,
-                                RED,
-                                (
-                                    (hovered_cell.x * self.grid_cell_size) + self.grid_window_pos[0],
-                                    (hovered_cell.y * self.grid_cell_size) + self.grid_window_pos[1],
-                                    self.grid_cell_size,
-                                    self.grid_cell_size
-                                )
-                            )
+            pygame_widgets.update(events)
+            pygame.display.update()
+            self.clock.tick(FPS)
 
-                pygame.display.update()
-                self.dt = self.clock.tick(FPS) / 1000
+    def launch_search_methods(self):
+        """Hand off to Project 1."""
+        from search_methods import Game
+        Game().run()
+        # When the sub-game window closes it returns here; re-init the display
+        # so the title screen is restored cleanly.
+        pygame.display.set_caption("Intro To AI - Nicholas Wise")
+        self.screen = pygame.display.set_mode((1280, 800))
 
-Game().run()
+    def launch_guided_search(self):
+        """Hand off to Project 2."""
+        from guided_search import GuidedSearch
+        GuidedSearch().run()
+        pygame.display.set_caption("Intro To AI - Nicholas Wise")
+        self.screen = pygame.display.set_mode((1280, 800))
+
+
+if __name__ == "__main__":
+    TitleScreen().run()
