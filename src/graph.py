@@ -168,7 +168,7 @@ class Graph:
                 # Already expanded — purple
                 pygame.draw.circle(surface, PURPLE, pos, node_size)
             else:
-                pygame.draw.circle(surface, RED, pos, node_size)
+                pygame.draw.circle(surface, LIGHT_GRAY, pos, node_size)
 
         # --- Hover label (drawn last so it sits on top of everything) ---
         if hovered_node and hovered_name in self._screen_pos:

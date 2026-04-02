@@ -1,9 +1,7 @@
 import pygame, sys, pygame_widgets
 from pygame_widgets.dropdown import Dropdown
-from pygame_widgets.textbox import TextBox
 from pygame_widgets.button import Button
 
-from enum import Enum, auto
 import os
 
 from graph import Graph
@@ -22,15 +20,17 @@ DATA_DIR = os.path.join(BASE_DIR, "..", "data")
 COORD_FILE = os.path.join(DATA_DIR, "coordinates.csv")
 ADJ_FILE   = os.path.join(DATA_DIR, "Adjacencies.txt")
 
-FPS = 60
+FPS          = 60
+DEFAULT_STEP = 300   # ms between steps
 
-class algorithm_chosen(Enum):
-    BFS    = auto()
-    DFS    = auto()
-    ID_DFS = auto()
-    GBF    = auto()
-    A_STAR = auto()
-    NONE   = auto()
+ALGO_MAPPING = {
+    0: DFS,
+    1: BFS,
+    2: ID_DFS,
+    3: GreedyBestFirst,
+    4: AStar,
+}
+
 
 class GuidedSearch:
     def __init__(self):
@@ -38,12 +38,13 @@ class GuidedSearch:
         pygame.display.set_caption("Intro To AI - Project 2 - Nicholas Wise")
         pygame.mouse.set_visible(True)
 
-        BASE_DIR   = os.path.dirname(__file__)
-        FONT_PATH  = os.path.join(BASE_DIR, "..", "fonts", "Oswald-Medium.ttf")
+        BASE_DIR  = os.path.dirname(__file__)
+        FONT_PATH = os.path.join(BASE_DIR, "..", "fonts", "Oswald-Medium.ttf")
 
-        self.clock     = pygame.time.Clock()
-        self.screen    = pygame.display.set_mode((1280, 800))
-        self.bg_color  = (25, 25, 25)
+        self.clock    = pygame.time.Clock()
+        self.screen   = pygame.display.set_mode((1280, 800))
+        self.bg_color = (25, 25, 25)
+        self.dt       = 0
 
         self.title_font = pygame.font.Font(FONT_PATH, 36)
         self.body_font  = pygame.font.Font(FONT_PATH, 20)
@@ -65,191 +66,208 @@ class GuidedSearch:
         self.start_node: Node | None = None
         self.end_node:   Node | None = None
 
-        # Selection / algorithm state
-        self.set_start_mode      = False
-        self.set_end_mode        = False
-        self.hover_display       = False
-        self.algorithim          = algorithm_chosen.BFS
-        self.run_algo            = False
-        self.pathfinding_started = False
+        # Selection state
+        self.set_start_mode = False
+        self.set_end_mode   = False
 
-        self.bfs = None
-        self.dfs = None
-        self.active_algo  = None   # whichever algorithm is currently running
-        self.step_delay   = 300    # milliseconds between each algorithm step
-        self.step_elapsed = 0      # accumulated time since last step
+        # Algorithm state
+        self.active_algo  = None   # current algo instance
+        self.running      = False  # True while stepping
+        self.step_delay   = DEFAULT_STEP
+        self.step_elapsed = 0
 
+        # ── Widgets ──────────────────────────────────────────────────────
         self.dropdown = Dropdown(
             self.screen, 40, 90, 220, 40, name='Select Algorithm',
-            choices=['Depth-First Search', 'Breadth-First Search', 'Iterative Deepening DFS', 'Best-First Search', 'A*'],
-            borderRadius=1, colour=(LIGHT_GRAY), values=[0, 1, 2, 3, 4],
+            choices=['Depth-First Search', 'Breadth-First Search',
+                     'Iterative Deepening DFS', 'Best-First Search', 'A*'],
+            borderRadius=1, colour=LIGHT_GRAY, values=[0, 1, 2, 3, 4],
             direction='down', textHAlign='left',
         )
 
-        def output():
-            print(self.textbox.getText())
-            self.random_seed = int(self.textbox.getText())
-            self.grid_reset = True
-
-        self.textbox = TextBox(self.screen, 40, 400, 220, 50, fontSize=15,
-                               borderColour=(0, 0, 0), textColour=(0, 0, 0),
-                               onSubmit=output, radius=2, borderThickness=1)
-
         self.set_start_node_button = Button(
-            self.screen, 40, 500, 220, 40,
+            self.screen, 40, 460, 220, 40,
             text='Set Start Node', fontSize=15, margin=10,
-            inactiveColour=(255, 255, 255), hoverColour=(150, 0, 0),
+            inactiveColour=WHITE, hoverColour=(150, 0, 0),
             pressedColour=(0, 200, 20), radius=3,
-            onClick=self.set_start_select_mode
+            onClick=self.set_start_select_mode,
         )
 
         self.set_end_node_button = Button(
-            self.screen, 40, 550, 220, 40,
+            self.screen, 40, 510, 220, 40,
             text='Set End Node', fontSize=15, margin=10,
-            inactiveColour=(255, 255, 255), hoverColour=(150, 0, 0),
+            inactiveColour=WHITE, hoverColour=(150, 0, 0),
             pressedColour=(0, 200, 20), radius=3,
-            onClick=self.set_end_select_mode
+            onClick=self.set_end_select_mode,
         )
 
-        self.start_algo_button = Button(
-            self.screen, 40, 600, 220, 40,
+        self.run_button = Button(
+            self.screen, 40, 570, 220, 40,
             text='Run Algorithm', fontSize=15, margin=10,
-            inactiveColour=(255, 255, 255), hoverColour=(150, 0, 0),
+            inactiveColour=WHITE, hoverColour=(150, 0, 0),
             pressedColour=(0, 200, 20), radius=3,
-            onClick=self.start_algorithm
+            onClick=self.start_algorithm,
         )
+
+        self.reset_button = Button(
+            self.screen, 40, 620, 220, 40,
+            text='Reset', fontSize=15, margin=10,
+            inactiveColour=WHITE, hoverColour=(150, 0, 0),
+            pressedColour=(0, 200, 20), radius=3,
+            onClick=self.reset,
+        )
+
+    # ------------------------------------------------------------------
+    # Widget / state helpers
+    # ------------------------------------------------------------------
 
     def _hide_widgets(self):
-        for widget in (
-            self.dropdown,
-            self.set_start_node_button,
-            self.set_end_node_button,
-            self.start_algo_button,
-            self.textbox,
-        ):
-            widget.hide()
+        for w in (self.dropdown, self.set_start_node_button,
+                  self.set_end_node_button, self.run_button, self.reset_button):
+            w.hide()
 
     def set_start_select_mode(self):
-        self.hover_display = True
         self.set_start_mode = True
         self.set_end_mode   = False
 
     def set_end_select_mode(self):
-        self.hover_display  = True
         self.set_end_mode   = True
         self.set_start_mode = False
 
+    def reset(self):
+        """Clear the current result so a fresh run can be started."""
+        self.active_algo  = None
+        self.running      = False
+        self.step_elapsed = 0
+
     def start_algorithm(self):
         if self.start_node is None or self.end_node is None:
-            print("Please set both a start and end node first.")
+            print("[GuidedSearch] Set both start and end nodes first.")
             return
 
         algo_choice = self.dropdown.getSelected()
-        mapping = {
-            0: DFS,
-            1: BFS,
-            2: ID_DFS,
-            3: GreedyBestFirst,
-            4: AStar,
-        }
-        if algo_choice not in mapping:
-            print("Please select an algorithm")
+        if algo_choice is None:
+            algo_choice = 0
+        if algo_choice not in ALGO_MAPPING:
+            print(f"[GuidedSearch] Unknown algo choice: {algo_choice!r}")
             return
 
-        algo_class        = mapping[algo_choice]
-        self.active_algo  = algo_class(self.start_node, self.end_node)
-        self.run_algo     = True
+        algo_class       = ALGO_MAPPING[algo_choice]
+        self.active_algo = algo_class(self.start_node, self.end_node)
+        self.running      = True
         self.step_elapsed = 0
-        self.pathfinding_started = False
+        print(f"[GuidedSearch] Starting {algo_class.__name__} "
+              f"{self.start_node.name} → {self.end_node.name}")
+
+    # ------------------------------------------------------------------
+    # Main loop
+    # ------------------------------------------------------------------
 
     def run(self):
         try:
-            control_panel = ControlPanel()
             graph = Graph()
             graph.nodes = self.nodes
             graph.build_screen_positions(self.graph_window, 200)
         except Exception as e:
             print(f"Setup error: {e}")
-            import traceback
-            traceback.print_exc()
+            import traceback; traceback.print_exc()
             return
 
         while True:
+            # ── Tick FIRST so dt is always valid this frame ───────────────
+            self.dt = self.clock.tick(FPS)
+
             self.screen.fill(self.bg_color)
             self.control_panel_window.fill(DARK_GRAY)
             self.graph_window.fill(DARK_GRAY)
             self.stats_panel.fill(DARK_GRAY)
 
+            # ── Events ───────────────────────────────────────────────────
             events = pygame.event.get()
             for event in events:
                 if event.type == pygame.QUIT:
-                    self._hide_widgets()
-                    return
+                    self._hide_widgets(); return
                 if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_ESCAPE:
-                        self._hide_widgets()
-                        return
-                    # Speed controls: + faster, - slower
+                        self._hide_widgets(); return
+                    # +/- adjust step speed
                     if event.key in (pygame.K_EQUALS, pygame.K_PLUS):
-                        self.step_delay = max(50, self.step_delay - 50)
+                        self.step_delay = max(0, self.step_delay - 50)
                     if event.key == pygame.K_MINUS:
                         self.step_delay = min(2000, self.step_delay + 50)
 
                 if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
                     if self.set_start_mode or self.set_end_mode:
                         clicked = graph.get_hovered_node(
-                            pygame.mouse.get_pos(),
-                            self.graph_window_pos
-                        )
+                            pygame.mouse.get_pos(), self.graph_window_pos)
                         if clicked is not None:
                             if self.set_start_mode:
-                                self.start_node      = clicked
-                                graph.start_node     = clicked
-                                self.set_start_mode  = False
+                                self.start_node     = clicked
+                                graph.start_node    = clicked
+                                self.set_start_mode = False
+                                self.reset()
                             else:
-                                self.end_node        = clicked
-                                graph.end_node       = clicked
-                                self.set_end_mode    = False
+                                self.end_node       = clicked
+                                graph.end_node      = clicked
+                                self.set_end_mode   = False
+                                self.reset()
 
-            # Resolve which node (if any) the mouse is over
-            hovered_node = graph.get_hovered_node(
-                pygame.mouse.get_pos(),
-                self.graph_window_pos   # [303, 40]
-            )
-
-            # Step the algorithm on a timer so progress is visible
-            if self.run_algo and self.active_algo is not None:
-                self.step_elapsed += self.clock.get_time()
+            # ── Step the algorithm one node per interval ──────────────────
+            if self.running and self.active_algo is not None:
+                self.step_elapsed += self.dt
                 if self.step_elapsed >= self.step_delay:
                     self.step_elapsed = 0
                     finished = self.active_algo.update()
                     if finished:
-                        self.run_algo = False
+                        self.running = False
+                        print(f"[GuidedSearch] Done. "
+                              f"Found={self.active_algo.found}  "
+                              f"Visited={len(self.active_algo.visited_nodes)}  "
+                              f"Path={len(self.active_algo.path)}")
 
-            # Draw graph — pass active algo so visited/frontier/path are coloured
-            graph.draw_graph(self.graph_window, 5, 200, hovered_node, self.active_algo)
+            # ── Draw ──────────────────────────────────────────────────────
+            hovered_node = graph.get_hovered_node(
+                pygame.mouse.get_pos(), self.graph_window_pos)
 
-            # Surfaces
+            graph.draw_graph(self.graph_window, 5, 200,
+                             hovered_node, self.active_algo)
+
             self.screen.blit(self.control_panel_window, (20, 40))
-            self.screen.blit(self.graph_window, (self.graph_window_pos[0], self.graph_window_pos[1]))
+            self.screen.blit(self.graph_window,
+                             (self.graph_window_pos[0], self.graph_window_pos[1]))
             self.screen.blit(self.stats_panel, (20, 700))
 
-            # Labels
-            draw_text(self.screen, "Algorithm Selection",   self.body_font, WHITE,            23,  10)
-            draw_text(self.screen, "Graph View",            self.body_font, WHITE,            self.graph_window_pos[0], self.graph_window_pos[1] - 30)
-            draw_text(self.screen, "Stats",                 self.body_font, WHITE,            23,  700)
-            draw_text(self.screen, "ESC — return to title", self.body_font, (100, 100, 100),  23,  770)
-            draw_text(self.screen, f"Nodes loaded: {len(self.nodes)}", self.body_font, LIGHT_GRAY, 200, 720)
-            draw_text(self.screen, f"Step delay: {self.step_delay}ms  (+/- to adjust)",
+            # ── UI labels ────────────────────────────────────────────────
+            draw_text(self.screen, "Algorithm Selection",
+                      self.body_font, WHITE, 23, 10)
+            draw_text(self.screen, "Graph View",
+                      self.body_font, WHITE,
+                      self.graph_window_pos[0], self.graph_window_pos[1] - 30)
+            draw_text(self.screen, "Stats",
+                      self.body_font, WHITE, 23, 700)
+            draw_text(self.screen, "ESC — return to title  |  +/- adjust speed",
+                      self.body_font, (100, 100, 100), 23, 770)
+            draw_text(self.screen, f"Nodes loaded: {len(self.nodes)}",
+                      self.body_font, LIGHT_GRAY, 200, 720)
+            draw_text(self.screen,
+                      f"Step delay: {self.step_delay} ms",
                       self.body_font, LIGHT_GRAY, 23, 740)
+
+            # Stats once an algo exists (running or finished)
             if self.active_algo is not None:
+                status = ""
+                if not self.running:
+                    status = "✓ Path found" if self.active_algo.found else "✗ No path"
+                else:
+                    status = "Running…"
                 draw_text(self.screen,
-                          f"Visited: {len(self.active_algo.visited_nodes)}  "
-                          f"Frontier: {len(self.active_algo.frontier)}  "
+                          f"{status}  |  "
+                          f"Visited: {len(self.active_algo.visited_nodes)}  |  "
+                          f"Frontier: {len(self.active_algo.frontier)}  |  "
                           f"Path: {len(self.active_algo.path)}",
                           self.body_font, LIGHT_GRAY, 200, 740)
 
-            # Show active selection mode as a prompt on the graph window
+            # Selection mode prompts
             if self.set_start_mode:
                 draw_text(self.screen, "Click a node to set START",
                           self.body_font, (90, 207, 66),
@@ -259,7 +277,6 @@ class GuidedSearch:
                           self.body_font, (209, 48, 48),
                           self.graph_window_pos[0], self.graph_window_pos[1] + 10)
 
-            # Show selected node names in stats bar
             if self.start_node:
                 draw_text(self.screen,
                           f"Start: {self.start_node.name.replace('_', ' ')}",
@@ -268,8 +285,6 @@ class GuidedSearch:
                 draw_text(self.screen,
                           f"End: {self.end_node.name.replace('_', ' ')}",
                           self.body_font, (209, 48, 48), 400, 730)
-
-            # Show hovered city name in stats bar
             if hovered_node:
                 draw_text(self.screen,
                           f"Hover: {hovered_node.name.replace('_', ' ')}",
@@ -277,4 +292,3 @@ class GuidedSearch:
 
             pygame_widgets.update(events)
             pygame.display.update()
-            self.clock.tick(FPS)

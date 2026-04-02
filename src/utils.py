@@ -65,6 +65,17 @@ def import_graph(coord_path: str, adj_path: str) -> list[Node]:
             if city not in nodes:
                 print(f"[import_graph] '{city}' found in adjacency file but not in coordinates — adding placeholder.")
                 nodes[city] = Node(city, float('nan'), float('nan'))
+                
+            # Ensure all edges are bidirectional
+            for city, neighbour_names in raw_adj.items():
+                for neighbour_name in neighbour_names:
+                    if neighbour_name not in nodes:
+                        continue
+                    city_node      = nodes[city]
+                    neighbour_node = nodes[neighbour_name]
+                    # If the reverse edge is missing, add it
+                    if city_node not in neighbour_node.adjacencies:
+                        neighbour_node.adjacencies = neighbour_node.adjacencies + (city_node,)
 
             for neighbour in neighbours:
                 if neighbour not in nodes:
