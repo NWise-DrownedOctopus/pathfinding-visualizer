@@ -9,7 +9,7 @@ import os
 from graph import Graph
 from control_panel import ControlPanel
 from utils import draw_text, import_graph, Node
-from grid_algorithms import BFS, DFS
+from graph_algorithms import BFS, DFS, ID_DFS, GreedyBestFirst, AStar
 
 WHITE      = (255, 255, 255)
 LIGHT_GRAY = (180, 180, 180)
@@ -75,6 +75,9 @@ class GuidedSearch:
 
         self.bfs = None
         self.dfs = None
+        self.active_algo  = None   # whichever algorithm is currently running
+        self.step_delay   = 300    # milliseconds between each algorithm step
+        self.step_elapsed = 0      # accumulated time since last step
 
         self.dropdown = Dropdown(
             self.screen, 40, 90, 220, 40, name='Select Algorithm',
@@ -137,19 +140,27 @@ class GuidedSearch:
         self.set_start_mode = False
 
     def start_algorithm(self):
+        if self.start_node is None or self.end_node is None:
+            print("Please set both a start and end node first.")
+            return
+
         algo_choice = self.dropdown.getSelected()
         mapping = {
-            0: algorithm_chosen.DFS,
-            1: algorithm_chosen.BFS,
-            2: algorithm_chosen.ID_DFS,
-            3: algorithm_chosen.GBF,
-            4: algorithm_chosen.A_STAR,
+            0: DFS,
+            1: BFS,
+            2: ID_DFS,
+            3: GreedyBestFirst,
+            4: AStar,
         }
         if algo_choice not in mapping:
             print("Please select an algorithm")
             return
-        self.algorithim = mapping[algo_choice]
-        self.run_algo   = True
+
+        algo_class        = mapping[algo_choice]
+        self.active_algo  = algo_class(self.start_node, self.end_node)
+        self.run_algo     = True
+        self.step_elapsed = 0
+        self.pathfinding_started = False
 
     def run(self):
         try:
@@ -178,6 +189,11 @@ class GuidedSearch:
                     if event.key == pygame.K_ESCAPE:
                         self._hide_widgets()
                         return
+                    # Speed controls: + faster, - slower
+                    if event.key in (pygame.K_EQUALS, pygame.K_PLUS):
+                        self.step_delay = max(50, self.step_delay - 50)
+                    if event.key == pygame.K_MINUS:
+                        self.step_delay = min(2000, self.step_delay + 50)
 
                 if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
                     if self.set_start_mode or self.set_end_mode:
@@ -201,8 +217,17 @@ class GuidedSearch:
                 self.graph_window_pos   # [303, 40]
             )
 
-            # Draw graph, passing hovered node so it can highlight + label it
-            graph.draw_graph(self.graph_window, 5, 200, hovered_node)
+            # Step the algorithm on a timer so progress is visible
+            if self.run_algo and self.active_algo is not None:
+                self.step_elapsed += self.clock.get_time()
+                if self.step_elapsed >= self.step_delay:
+                    self.step_elapsed = 0
+                    finished = self.active_algo.update()
+                    if finished:
+                        self.run_algo = False
+
+            # Draw graph — pass active algo so visited/frontier/path are coloured
+            graph.draw_graph(self.graph_window, 5, 200, hovered_node, self.active_algo)
 
             # Surfaces
             self.screen.blit(self.control_panel_window, (20, 40))
@@ -215,6 +240,14 @@ class GuidedSearch:
             draw_text(self.screen, "Stats",                 self.body_font, WHITE,            23,  700)
             draw_text(self.screen, "ESC — return to title", self.body_font, (100, 100, 100),  23,  770)
             draw_text(self.screen, f"Nodes loaded: {len(self.nodes)}", self.body_font, LIGHT_GRAY, 200, 720)
+            draw_text(self.screen, f"Step delay: {self.step_delay}ms  (+/- to adjust)",
+                      self.body_font, LIGHT_GRAY, 23, 740)
+            if self.active_algo is not None:
+                draw_text(self.screen,
+                          f"Visited: {len(self.active_algo.visited_nodes)}  "
+                          f"Frontier: {len(self.active_algo.frontier)}  "
+                          f"Path: {len(self.active_algo.path)}",
+                          self.body_font, LIGHT_GRAY, 200, 740)
 
             # Show active selection mode as a prompt on the graph window
             if self.set_start_mode:

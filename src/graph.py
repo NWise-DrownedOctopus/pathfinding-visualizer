@@ -88,14 +88,18 @@ class Graph:
     # Drawing
     # ------------------------------------------------------------------
 
-    def draw_graph(self, surface, node_size, dist_multi, hovered_node=None):
-        """Draw edges, nodes, and an optional hover highlight + label.
+    def draw_graph(self, surface, node_size, dist_multi,
+                   hovered_node=None, algo=None):
+        """Draw edges, nodes, algorithm state, and an optional hover label.
 
         Args:
-            surface:       The pygame.Surface to draw onto (graph_window).
-            node_size:     Radius in pixels for normal nodes.
-            dist_multi:    Scale factor (only used if cache needs rebuilding).
-            hovered_node:  Node returned by get_hovered_node(), or None.
+            surface:      The pygame.Surface to draw onto (graph_window).
+            node_size:    Radius in pixels for normal nodes.
+            dist_multi:   Scale factor (only used if cache needs rebuilding).
+            hovered_node: Node returned by get_hovered_node(), or None.
+            algo:         A live algorithm instance (BFS/DFS/etc.) or None.
+                          If provided, its visited_nodes, frontier, and path
+                          lists are used to colour nodes each frame.
         """
         if not self._screen_pos:
             self.build_screen_positions(surface, dist_multi)
@@ -104,21 +108,41 @@ class Graph:
             self._label_font = pygame.font.SysFont(None, HOVER_FONT_SIZE)
 
         hovered_name = hovered_node.name if hovered_node else None
+        start_name   = self.start_node.name if self.start_node else None
+        end_name     = self.end_node.name   if self.end_node   else None
 
-        # --- Edges ---
+        # Build name-sets from algo state for O(1) lookup
+        visited_names  = set()
+        frontier_names = set()
+        path_names     = set()
+        if algo is not None:
+            visited_names  = {n.name for n in algo.visited_nodes}
+            frontier_names = {n.name for n in algo.frontier}
+            path_names     = {n.name for n in algo.path}
+
+        # --- Build exact path edges (consecutive pairs only) ---
+        path_edges: set[frozenset] = set()
+        if algo is not None and len(algo.path) > 1:
+            for i in range(len(algo.path) - 1):
+                path_edges.add(frozenset({algo.path[i].name, algo.path[i + 1].name}))
+
+        # --- Edges: highlight actual path edges in blue, rest in gray ---
         for node in self.nodes:
             src = self._screen_pos.get(node.name)
             if src is None:
                 continue
             for neighbour in node.adjacencies:
                 dst = self._screen_pos.get(neighbour.name)
-                if dst is not None:
+                if dst is None:
+                    continue
+                if frozenset({node.name, neighbour.name}) in path_edges:
+                    pygame.draw.line(surface, BLUE, src, dst, 3)
+                else:
                     pygame.draw.line(surface, LIGHT_GRAY, src, dst, 1)
 
         # --- Nodes ---
-        start_name = self.start_node.name if self.start_node else None
-        end_name   = self.end_node.name   if self.end_node   else None
-
+        # Priority (highest to lowest):
+        #   hover > start > end > path > frontier > visited > default
         for node in self.nodes:
             pos = self._screen_pos.get(node.name)
             if pos is None:
@@ -133,8 +157,18 @@ class Graph:
             elif node.name == end_name:
                 pygame.draw.circle(surface, RED,   pos, HOVER_RADIUS)
                 pygame.draw.circle(surface, WHITE, pos, HOVER_RADIUS, 2)
+            elif node.name in path_names:
+                # Final path — bright blue filled
+                pygame.draw.circle(surface, BLUE,  pos, node_size + 2)
+                pygame.draw.circle(surface, WHITE, pos, node_size + 2, 1)
+            elif node.name in frontier_names:
+                # Currently in the open/frontier set — yellow outline
+                pygame.draw.circle(surface, YELLOW, pos, node_size + 1)
+            elif node.name in visited_names:
+                # Already expanded — purple
+                pygame.draw.circle(surface, PURPLE, pos, node_size)
             else:
-                pygame.draw.circle(surface, LIGHT_GRAY, pos, node_size)
+                pygame.draw.circle(surface, RED, pos, node_size)
 
         # --- Hover label (drawn last so it sits on top of everything) ---
         if hovered_node and hovered_name in self._screen_pos:
@@ -142,14 +176,10 @@ class Graph:
             label = self._label_font.render(
                 hovered_node.name.replace("_", " "), True, WHITE
             )
-            # Offset label slightly above and to the right of the node
             lx = pos[0] + HOVER_RADIUS + 4
             ly = pos[1] - label.get_height() // 2
-
-            # Keep label inside the surface horizontally
             if lx + label.get_width() > surface.get_width():
                 lx = pos[0] - label.get_width() - HOVER_RADIUS - 4
-
             surface.blit(label, (lx, ly))
 
 
