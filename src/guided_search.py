@@ -13,6 +13,7 @@ from control_panel import ControlPanel
 from utils import draw_text, import_graph, Node
 from graph_algorithms import BFS, DFS, ID_DFS, GreedyBestFirst, AStar
 from generator_dialog import GeneratorDialog
+from graph_generator import generate_graph
 
 WHITE      = (255, 255, 255)
 LIGHT_GRAY = (180, 180, 180)
@@ -76,6 +77,8 @@ class GuidedSearch:
 
         # Pending generator params — set when dialog confirms, consumed on next run
         self.pending_gen_params: dict | None = None
+        self._rebuild_graph = False  # set True when nodes change mid-session
+        self.graph: Graph | None = None  # set in run(), updated on generation
 
         self.start_node: Node | None = None
         self.end_node:   Node | None = None
@@ -220,8 +223,22 @@ class GuidedSearch:
         if params is not None:
             self.pending_gen_params = params
             print(f"[GuidedSearch] Generator params received: {params}")
-            # TODO: pass params to graph generator and rebuild self.nodes / self.node_map
-            # For now, just log them so we can confirm the pipeline works.
+
+            # Generate the new node list and rebuild the graph
+            self.nodes    = generate_graph(params)
+            self.node_map = {n.name: n for n in self.nodes}
+
+            # Clear any existing selection and algo state — nodes have changed
+            self.start_node = None
+            self.end_node   = None
+            self._clear_algo()
+
+            # Rebuild self.graph immediately (it's an instance var now)
+            self.graph = Graph()
+            self.graph.nodes = self.nodes
+            self.graph.build_screen_positions(self.graph_window, 200)
+            self._rebuild_graph = False   # already done, no need to repeat in loop
+            print(f"[GuidedSearch] Graph rebuilt with {len(self.nodes)} nodes.")
         else:
             print("[GuidedSearch] Generator dialog cancelled.")
 
@@ -318,9 +335,9 @@ class GuidedSearch:
 
     def run(self):
         try:
-            graph = Graph()
-            graph.nodes = self.nodes
-            graph.build_screen_positions(self.graph_window, 200)
+            self.graph = Graph()
+            self.graph.nodes = self.nodes
+            self.graph.build_screen_positions(self.graph_window, 200)
         except Exception as e:
             print(f"Setup error: {e}")
             import traceback; traceback.print_exc()
@@ -328,6 +345,14 @@ class GuidedSearch:
 
         while True:
             self.dt = self.clock.tick(FPS)
+
+            # Rebuild graph if nodes were replaced by the generator
+            if self._rebuild_graph:
+                self.graph = Graph()
+                self.graph.nodes = self.nodes
+                self.graph.build_screen_positions(self.graph_window, 200)
+                self._rebuild_graph = False
+                print(f"[GuidedSearch] Graph rebuilt with {len(self.nodes)} nodes.")
 
             # Read slider — right = faster = lower delay
             self.step_delay = MAX_STEP - self.speed_slider.getValue()
@@ -347,18 +372,18 @@ class GuidedSearch:
 
                 if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
                     if self.set_start_mode or self.set_end_mode:
-                        clicked = graph.get_hovered_node(
+                        clicked = self.graph.get_hovered_node(
                             pygame.mouse.get_pos(), self.graph_window_pos)
                         if clicked is not None:
                             if self.set_start_mode:
-                                self.start_node     = clicked
-                                graph.start_node    = clicked
-                                self.set_start_mode = False
+                                self.start_node          = clicked
+                                self.graph.start_node    = clicked
+                                self.set_start_mode      = False
                                 self._clear_algo()
                             else:
-                                self.end_node       = clicked
-                                graph.end_node      = clicked
-                                self.set_end_mode   = False
+                                self.end_node            = clicked
+                                self.graph.end_node      = clicked
+                                self.set_end_mode        = False
                                 self._clear_algo()
 
             # Step algorithm
@@ -385,10 +410,10 @@ class GuidedSearch:
                               f"PathLen={self.stat_path_length}")
 
             # Draw
-            hovered_node = graph.get_hovered_node(
+            hovered_node = self.graph.get_hovered_node(
                 pygame.mouse.get_pos(), self.graph_window_pos)
 
-            graph.draw_graph(self.graph_window, 5, 200, hovered_node, self.active_algo)
+            self.graph.draw_graph(self.graph_window, 5, 200, hovered_node, self.active_algo)
 
             self.screen.blit(self.control_panel_window, (20, 40))
             self.screen.blit(self.graph_window,
@@ -415,7 +440,7 @@ class GuidedSearch:
                           f"⚙ Generator ready — N={self.pending_gen_params['n_nodes']}  "
                           f"b={self.pending_gen_params['branching']}  "
                           f"seed={self.pending_gen_params['seed']}",
-                          self.small_font, ORANGE, 303, 600)
+                          self.small_font, ORANGE, 303, 622)
 
             # ── Control panel labels ──────────────────────────────────────
             draw_text(self.screen, "Algorithm Selection",
