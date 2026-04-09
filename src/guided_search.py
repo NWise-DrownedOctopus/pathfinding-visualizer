@@ -14,6 +14,8 @@ from utils import draw_text, import_graph, Node
 from graph_algorithms import BFS, DFS, ID_DFS, GreedyBestFirst, AStar
 from generator_dialog import GeneratorDialog
 from graph_generator import generate_graph
+from benchmark import run_benchmark
+from benchmark_report import BenchmarkReportWindow
 
 WHITE      = (255, 255, 255)
 LIGHT_GRAY = (180, 180, 180)
@@ -170,12 +172,22 @@ class GuidedSearch:
 
         # Generate New Graph button — bottom of control panel
         self.gen_graph_button = Button(
-            self.screen, 40, 550, 220, 38,
+            self.screen, 40, 545, 220, 38,
             text='⚙  Generate New Graph', fontSize=13, margin=8,
             inactiveColour=ORANGE, hoverColour=(180, 100, 20),
             pressedColour=(140, 70, 10), radius=3,
             textColour=WHITE,
             onClick=self.on_generate_graph,
+        )
+
+        # Benchmark button
+        self.benchmark_button = Button(
+            self.screen, 40, 590, 220, 38,
+            text='📊  Run Benchmark', fontSize=13, margin=8,
+            inactiveColour=(60, 100, 160), hoverColour=(40, 80, 140),
+            pressedColour=(25, 60, 120), radius=3,
+            textColour=WHITE,
+            onClick=self.on_benchmark,
         )
 
     # ------------------------------------------------------------------
@@ -192,6 +204,7 @@ class GuidedSearch:
             self.restart_button,
             self.speed_slider,
             self.gen_graph_button,
+            self.benchmark_button,
         ):
             w.hide()
 
@@ -253,8 +266,34 @@ class GuidedSearch:
             self.restart_button,
             self.speed_slider,
             self.gen_graph_button,
+            self.benchmark_button,
         ):
             w.show()
+
+    def on_benchmark(self):
+        """Run the benchmark harness and display the report popup."""
+        if self.start_node is None or self.end_node is None:
+            print("[GuidedSearch] Set both start and end nodes before benchmarking.")
+            return
+
+        print(f"[GuidedSearch] Starting benchmark: "
+              f"{self.start_node.name} → {self.end_node.name}")
+
+        # Pause any running algo so it doesn't interfere
+        self.running = False
+        self._hide_widgets()
+
+        # Run the harness (blocks — no animation)
+        results = run_benchmark(self.start_node, self.end_node, runs=5)
+
+        # Show report popup
+        report = BenchmarkReportWindow(results)
+        report.run()
+
+        # Restore main display and widgets
+        self.screen = pygame.display.set_mode((1280, 800))
+        pygame.display.set_caption("Intro To AI - Project 2 - Nicholas Wise")
+        self._show_widgets()
 
     # ------------------------------------------------------------------
     # Playback controls
@@ -467,7 +506,9 @@ class GuidedSearch:
                       self.small_font, (100, 200, 100), fast_x, 515)
 
             draw_text(self.screen, "Graph Source",
-                      self.small_font, LIGHT_GRAY, 40, 530)
+                      self.small_font, LIGHT_GRAY, 40, 528)
+            draw_text(self.screen, "Benchmark",
+                      self.small_font, LIGHT_GRAY, 40, 573)
 
             # ── Stats panel ───────────────────────────────────────────────
             STAT_X0 = 25
